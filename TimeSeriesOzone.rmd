@@ -1,0 +1,307 @@
+---
+title: |
+  | Time Series Analysis 
+  | Ozone Level in Arosa, Switzerland
+author: "Tun Lee Ng"
+date: "Fall 2015"
+output: html_document
+bibliography: TS.bib
+---
+
+<style type="text/css">
+
+h1.title {
+  text-align: center;
+}
+h4.author {
+  text-align: center;
+}
+h4.date {
+  text-align: center;
+}
+</style>
+
+# Introduction
+
+Meteorological authorities have been monitoring ozone levels closely due to serious concern about ozone depletion and its subsequent effects to climate change. This project intends to investigate on the time series of the monthly mean ozone levels (in Dobson units) in Arosa, Switzerland from January 1932 till December 1971, totalling 480 observations. The source of this data set can be credited to Hipel and Mcleod (2015).  
+
+First, the time series would be scrutinized for any evidence of significant downward trend (which is interpreted as ozone depletion), seasonal trends or drift in its mean terms which would contribute to our understanding about the overall behavior of the ozone levels. The time series would then be detrended (if deemed necessary) to examine stationarity of its stochastic components. Subsequently, time series models would be fitted using both parametric (ARMA models) and non-parametric (spectral analysis) approaches. Finally, model diagnostics and forecasting would be conducted to compare the results from different models. The following notations are used:  
+
+Let $Y_t$ = ozone levels in Arosa at time $t$  
+$Y_t = \mu_t + X_t$, where  
+$\widehat{\mu}_t$ = estimated deterministic trend,and  
+$X_t$ = Residuals,or,stochastic component of the time series $Y_t$.  
+
+# Modeling the Deterministic Trend of the Time Series
+
+```{r, echo = T, warning = F, message = F, fig.height = 3.2}
+library(TSA)
+library(tseries)
+data <- read.table("ozone.txt",header=F,col.names="Ozone")
+ozone <- ts(data=data$Ozone,frequency=12,start=c(1932,1),end=c(1971,12))
+plot(ozone,type="l",main="Figure 1: Ozone Level in Arosa")
+abline(h=mean(data$Ozone))
+```
+
+We plot of the original time series $Y_t$. At first glance, the time series does not appear to have a linear time trend. At first glance, the time series does not appear to have a linear time trend. This is confirmed by the statistically insignificant coefficients given by fitting a linear time trend to the data as shown in Output 1. Consequently, this data set does not indicate any significant sign of ozone depletion in Arosa during the period of 1932-1972.
+
+```{r, echo = T}
+linear.model <- lm(ozone~poly(time(ozone),1,raw=T))
+summary(linear.model)
+```
+
+## The Seasonal Means Model 
+
+```{r, echo = T, fig.height = 4.3, fig.width = 9}
+month.=season(ozone)
+plot(y=ozone,x=as.vector(time(ozone)),xlab='Time',type='l',
+     main="Figure 2: Seasonality in the Ozone Level")
+points(y=ozone,x=as.vector(time(ozone)),pch=as.vector(season(ozone)))
+```
+
+Next, we check the time series for any seasonality effects. In Figure 2, the observations are labelled with their respective months, which reveals that the time series is cyclical in nature. For instance, ozone readings usually peaked in March-April and bottomed in October-November. A seasonal means model with an intercept term is then fitted to the time series. As shown in Output 2, all coefficients are statistically significant and the adjusted $R^2$ is 0.810. The seasonal means model is:  
+
+```{r, echo = T}
+season.model <- lm(ozone~month.)
+summary(season.model)
+```
+
+Under the seasonal means model, all the months during the first half of the year (Feb ??? June) have ozone readings which are higher than that in January (which is the base month); whereas during the latter half of the year, the ozone levels are lower than that in January. In fact, based on the magnitudes and signs of the coefficients, we can observe that the ozone level increased and peaked in April, then decreased and troughed in October, before climbing up again to repeat the process.  
+
+The standardized residuals from the fitted seasonal means model are then plotted in Figure 3. Monthly seasonality is not discernible in the standardized residuals. This shows that the seasonal means model has sufficiently captured the seasonality effect in the time series. 
+
+```{r, echo = T, fig.height = 4.3, fig.width = 9}
+season.ozone <- ts(data$Ozone-fitted(season.model),freq=12,start=c(1964,1),end=c(1971,12))
+plot(rstudent(season.model),x=as.vector(time(ozone)),pch=as.vector(season(season.ozone)),
+     ylab="Standardized Residuals",xlab="Time",
+     main="Figure 3: Residuals vs Time \n for Seasonal Means Model")
+lines(x=as.vector(time(ozone)),y=rstudent(season.model),type="l")
+```
+
+## The Cosine Trend Model
+
+Another contender is the cosine trend model which also gives all statistically significant coefficients, with an adjusted $R^2$ = 0.798. The cosine trend model is
+
+```{r, echo = T}
+har.=harmonic(ozone,1)
+cosine.model <- lm(ozone~har.)
+summary(cosine.model)
+```
+
+The standardized residuals from the fitted cosine trend model are then plotted in Figure 4. Monthly seasonality is not discernible in the standardized residuals. This shows that the cosine trend model has adequately captured the seasonality effect in the time series. 
+
+```{r, echo = T, fig.height = 4.3, fig.width = 9}
+cosine.ozone <- ts(data$Ozone-fitted(cosine.model),freq=12,start=c(1964,1),end=c(1971,12))
+plot(rstudent(cosine.model),x=as.vector(time(ozone)),pch=as.vector(season(cosine.ozone)),
+     ylab="Standardized Residuals",xlab="Time",
+     main="Figure 4: Residuals vs Time \n for Cosine Trend Model")
+lines(x=as.vector(time(ozone)),y=rstudent(cosine.model),type="l")
+```
+
+Whilst the seasonal means model has a slightly higher adjusted $R^2$ value, the cosine trend model is relatively more parsimonious. These two models will be further examined in the subsequent sections of the project.
+
+# Modeling the Stochastic Components with an ARMA model
+
+## Residuals $X_t$ from the Seasonal Means Model
+
+We first conduct the Dickey-Fuller test on the detrended series (residuals) $X_t$ from the seasonal means model.
+
+```{r, echo = T, warning = F, message = F}
+adf.test(season.ozone,k=0)
+```
+
+It gives a p-value of less than 0.01, providing strong evidence to support stationarity of the detrended series. In addition, the Augmented Dickey-Fuller (ADF) test is conducted with the best value of $k$ = 4 chosen by R package.
+
+```{r, echo = T, warning = F, message = F}
+ar(diff(season.ozone))
+adf.test(season.ozone,k=ar(diff(season.ozone))$order)
+```
+
+Again, the test gives a p-value of less than 0.02, providing strong evidence to support stationarity of the detrended series.  
+
+After ensuring stationarity of the detrended series $X_t$ from the seasonal means model, the sample ACF and sample PACF are plotted.
+
+```{r, echo  = T, fig.height = 3.2}
+acf(as.vector(season.ozone),lag.max=100,
+    main="Figure 7: Sample ACF for Residuals \nfrom Seasonal Means Model")
+pacf(as.vector(season.ozone),lag.max=100,
+     main="Figure 8: Sample PACF for Residuals \nfrom Seasonal Means Model")
+```
+
+There are no significant lags in both sample ACF and sample PACF, indicating that $X_t$ could be a white noise. We then take the first difference of $X_t$ and plot the sample ACF and sample PACF again. 
+
+```{r, echo  = T, fig.height = 3.2}
+acf(diff(as.vector(season.ozone)),lag.max=100,
+    main="Figure 9: Sample ACF for 1st Difference of Residuals\n from Seasonal Means Model") #to show overfitting into MA(1)
+pacf(diff(as.vector(season.ozone)),lag.max=100,
+     main="Figure 10: Sample PACF for 1st Difference of Residuals\n from Seasonal Means Model") #to show overfitting into MA(1)
+```
+
+Based on Figure 9 and Figure 10, the sample ACF has significant autocorrelation at lag 1 with clear cut-off after that, while the sample PACF decays slowly. This indicates that the first difference of $X_t$ is an MA(1). We can relate this to the fact that overdifferencing of a white noise process results in an MA(1).  
+
+```{r, echo = T, warning = F, message = F}
+eacf(season.ozone)
+```
+
+In addition, , the EACF approach also points to the model ARMA(0,0), which is essentially a white noise process. Next, we apply the best ARMA subset approach with the maximum number of lags for AR and MA chosen as 12 since there is a larger spike (albeit still within the 95% confidence interval) at lag 12 in both sample ACF and sample PACF of $X_t$. 
+
+```{r, echo = T, warning = T, message = T}
+choose.subset1 <- armasubsets(season.ozone,nar=12,nma=12,y.name="ozone",ar.method="ols")
+```
+
+There will be a warning message of exactly 12 dependencies given by R package. All these further suggest that the detrended series $X_t$ from the seasonal means model is a white noise.
+
+## Residuals $X_t$ from the Cosine Trend Model
+
+We repeat the same process above for the detrended series (residuals) $X_t$ from the cosine trend model. 
+
+```{r, echo = T, warning = F, message  =F}
+adf.test(cosine.ozone,k=0)
+ar(diff(cosine.ozone))
+adf.test(cosine.ozone,k=ar(diff(cosine.ozone))$order)
+```
+
+Both the Dickey-Fuller Test and the ADF Test give p-values of less than 0.02, thus providing strong evidence to support stationarity of the detrended series.  
+
+```{r, echo  = T, fig.height = 3.2}
+acf(as.vector(cosine.ozone),lag.max=100,
+    main="Figure 11: Sample ACF for Residuals \nfrom Cosine Trend Model")
+pacf(as.vector(cosine.ozone),lag.max=100,
+     main="Figure 12: Sample PACF for Residuals \nfrom Cosine Trend Model")
+acf(diff(as.vector(cosine.ozone),lag.max=100),
+    main="Figure 13: Sample ACF for 1st Difference of Residuals\n from Cosine Trend Model") #to show overfitting into MA(1)
+pacf(diff(as.vector(cosine.ozone),lag.max=100),
+     main="Figure 14: Sample PACF for 1st Difference of Residuals\n from Cosine Trend Model") #to show overfitting into MA(1)
+```
+
+As shown in Figure 11 and Figure 12, the sample ACF and sample PACF of this detrended series $X_t$ from the cosine trend model do not show any significant lags, thus suggesting that it could be a white noise. Again, after taking the first difference of $X_t$, there is only one significant lag in the sample ACF and slow decay in the sample PACF as shown in Figure 13 and Figure 14 respectively. Again, this points to the fact that overdifferencing of a white noise process results in an MA(1) process.
+
+```{r, echo = T, message = F, warning = F}
+eacf(cosine.ozone)
+```
+
+```{r, echo = T, message = T, warning = T}
+choose.subset2 <- armasubsets(cosine.ozone,nar=12,nma=12,y.name="ozone",ar.method="ols")
+```
+
+The EACF approach suggests an ???ARMA(0,0)??? model, which is essentially a white noise process. When the best ARMA subset approach is applied, we obtain the same warning message of twelve dependencies. All these further support the fact that the detrended series $X_t$ from the cosine trend model is also a white noise. Using these parametric approaches, no ARMA models need to be fitted on $X_t$. We will examine this further in the Spectral Analysis section.
+
+# Model Diagnostics
+
+Since we only need to fit a deterministic model (either the seasonal means model or the cosine trend model) to the time series $Y_t$, residual analysis is conducted on the detrended series $X_t$.
+
+## The Seasonal Means Model 
+
+In the previous section, we have already checked that the sample ACF and sample PACF of the detrended series X_t from the seasonal means model have no significant lags. We can further conduct a Ljung-Box test on the residuals with various choices of lags, all of which give high p-values, thus suggesting that the residuals are uncorrelated. 
+
+```{r, echo = T, message = F, warning = F}
+season.whitenoise <- arima(season.ozone,order=c(0,0,0))
+LB.test(season.whitenoise,lag=10,type="Ljung-Box")
+```
+
+Consistent to the results from the sample ACF, sample PACF and the Ljung-Box test, the runs test also provides no evidence of dependence of the residuals.
+
+```{r, echo = T, message = F, warning = F}
+runs(resid(season.whitenoise))$pvalue
+```
+
+All these indicate that the seasonal means model itself has captured the deterministic trend of the ozone level time series $Y_t$ adequately and there are no other significant autocorrelations remaining in the detrended series.  
+
+To test normality of the white noise process $X_t$, we first obtain a Q-Q plot of $X_t$.
+
+```{r, echo = T, fig.height = 3.5}
+qqnorm(resid(season.whitenoise),
+       main="Figure 15: Normal Q-Q Plot for Residuals \nfrom Seasonal Means Model")
+qqline(resid(season.whitenoise))
+```
+
+There seems to be deviation from normality especially at both ends of the quantiles, thus implying that this white noise process could be more heavy-tailed than a normal distribution. Indeed the Shapiro-Wilk test gives a p-value of 0.02, thus providing sufficient evidence to reject normality of the residuals $X_t$.
+
+```{r, echo = T}
+shapiro.test(resid(season.whitenoise))
+```
+
+## The Cosine Trend Model
+
+We repeat the same process as above.
+
+```{r, echo = T, warning = F, message = F, fig.height = 3.5}
+cosine.whitenoise <- arima(cosine.ozone,order=c(0,0,0))
+LB.test(cosine.whitenoise,lag=10,type="Ljung-Box")
+runs(resid(cosine.whitenoise))
+qqnorm(resid(cosine.whitenoise),
+       main="Figure 16: Normal Q-Q Plot for Residuals \nfrom Cosine Trend Model")
+qqline(resid(cosine.whitenoise))
+shapiro.test(resid(cosine.whitenoise))
+```
+
+Again, the Ljung-Box test, gives significant evidence that the residuals from the cosine trend model is uncorrelated. This is further substantiated by the runs test which suggests independence of the residuals. The residuals $X_t$ from the cosine trend model also looks approximately normal at best based on the Q-Q plot in Figure 16. The deviation at the right-end of the quantiles is less than that observed in the Q-Q plot for the residuals from the seasonal means model. The Shapiro-Wilk test on the residuals from the cosine trend model gives a p-value of 0.125, which does not reject normality of $X_t$.  
+
+# Spectral Analysis
+
+We now adopt a non-parametric approach in modelling $Y_t$. First, we can obtain a raw periodogram of the demeaned series $Y_t - \bar{Y}$?? to look for any significant frequencies which could contribute to the periodicities of the time series. 
+
+```{r, echo  =T, fig.height = 4.3}
+periodogram(ozone-mean(data$Ozone),main="Figure 17: Periodogram for the Demeaned Series")
+```
+
+There is only 1 significant spike in the raw periodogram at frequency $f = 0.0833 \approx \frac{1}{12}$ approximately, with little noises elsewhere. , thus showing that this frequency is the only important frequency in contributing to the behaviour of the time series $Y_t$. Furthermore, we use R package to estimate a spectral density for the demeaned series.
+
+```{r, echo = T, message = F, warning  =F, fig.height = 4.3}
+sp <- spec(ozone-mean(data$Ozone),method="pgram",type='l',log='no', plot = T,
+     xlab="Frequency",ylab="Estimated Spectral Density",
+     main="Figure 19: Estimated Spectral Density \n for the Demeaned Series")
+```
+
+Again, we obtained a spike at $f \approx 0.0833$, with little noises at other frequencies. No smoothing or tapering is needed in this case. Therefore, we can further interpret that the ozone level in Arosa has a period or cycle of $\frac{1}{f}$ = 12 months = 1 year. This is consistent with the use of seasonal means model in fitting the deterministic trend of the time series $Y_t$.  
+
+In the time domain, we have established that the residuals $X_t$ from the seasonal means model and the cosine trend model is a white noise process. We can also use the tools from the frequency domain to check this result.  First, compute the sample variance of $X_t$.
+
+```{r, echo = T}
+var(season.ozone)
+var(cosine.ozone)
+```
+
+Next, we plot the estimated spectral density for $X_t$ for both models.
+
+```{r, echo = T, fig.height = 4.3, fig.width = 9}
+par(mfrow=c(1,2))
+sp2 <- spec(season.ozone,method="ar",type='l',log='no', plot = T,
+     xlab="frequency",ylab="estimated spectral density",
+     main="Figure 20: Estimated Spectral Density for \nResiduals from the Seasonal Means Model")
+sp3 <- spec(cosine.ozone,method="ar",type='l',log='no',sub="", plot = T,
+     xlab="frequency",ylab="estimated spectral density",
+     main="Figure 21: Estimated Spectral Density for \nResiduals from the Cosine Trend Model")
+```
+
+The estimated spectral density turns out to be a horizontal line at about the sample variance, thus showing that the detrended series from both models is indeed a white noise.
+
+# Forecasting
+
+Finally, we do a simple forecasting based on the fitted deterministic trends since no ARMA models are needed. We provide 4-year forecasts from January 1972 till December 1976 with 95\% prediction interval using both the seasonal means model and the cosine trend model. The plots of the original series from January 1969 together with the 4-year forecasts for both models are provided in Figure 22 and Figure 23. The dashed lines represent the 95\% prediction interval for the forecasts.
+
+```{r, echo = T, fig.height = 4.5, fig.width = 9.5}
+determ=as.matrix(model.matrix(~month.-1))[,-1]
+model1=arima(ozone,order=c(0,0,0),xreg=determ);model1
+newmonth.=season(ts(rep(1,48),start=c(1972,1),freq=12))
+
+determ2=as.matrix(model.matrix(~har.))[,-1]
+model2=arima(ozone,order=c(0,0,0),xreg=determ2);model2
+newhar.=harmonic(ts(rep(1,48),start=c(1972,1),freq=12),1)
+
+par(mfrow=c(1,2))
+plot(model1,n.ahead=48,n1=c(1969,1),type='b',
+     main="Figure 22: 4-year Forecasts for \nthe Seasonal Means Model",
+     xlab='Year',ylab='ozone', newxreg=as.matrix(model.matrix(~newmonth.-1))[,-1])
+plot(model2,n.ahead=48,n1=c(1969,1),type='b',
+     main="Figure 23: 4-year Forecasts for \nthe Cosine Trend Model",
+     xlab='Year',ylab='ozone', newxreg=as.matrix(model.matrix(~newhar.))[,-1])
+```
+
+# Conclusion
+
+From our analyses, there was no evidence for ozone depletion in Arosa during the period 1932-1971. The ozone level had a cycle of 1-year, during which it peaked in April and troughed in October. A seasonal means model or a cosine trend model is adequate to explain the ozone level time series, with no significant autocorrelations detected in the detrended series from both models. These two models are good candidates for this ozone level time series. One could choose the more parsimonious cosine trend model which gives a forecast that is very similar to that of the seasonal means model, and produces normally distributed residuals. 
+
+# References
+
+Hipel, K., & Mcleod, A. (2015, April 18). Hipel-McLeod Time Series Datasets Collection. Retrieved from http://www.stats.uwo.ca/faculty/mcleod/epubs/mhsets/readme-mhsets.html
